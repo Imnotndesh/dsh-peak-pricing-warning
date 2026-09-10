@@ -519,8 +519,8 @@ function client() {
         const target = st.peak ? st.offPeakStartMs : st.peakStartMs;
         const remaining = target === null ? null : target - st.nowMs;
         const primary = st.peak
-          ? 'off-peak in ' + countdown(remaining)
-          : 'peak in ' + countdown(remaining);
+          ? 'Off-peak in ' + countdown(remaining)
+          : 'Peak in ' + countdown(remaining);
 
         const title = st.weekend
           ? 'DeepSeek weekend: all hours are off-peak'
