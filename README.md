@@ -59,13 +59,15 @@ Useful for trying either out before committing to an install.
 
 # cost-estimator
 
-A running session cost estimate beside the composer:
+A running session cost estimate in the composer stats row, alongside the shipped time and usage pills:
 
 ```
-$0.0795 · 2.31M tok · 96% cached
+turns 4 · 12.4k tok/s   ·   ⛁ 2.31M · 96% cached   ·   cost · $0.0795
 ```
 
-Hover for the full breakdown by billing bucket and rate class.
+It matches the styling of the pills beside it and reports only the one figure they do not: the dollar amount. The cache-hit rate is deliberately **not** repeated, since the usage pill in the same row already shows it.
+
+Hover for the per-bucket token breakdown.
 
 ## Where the numbers come from
 

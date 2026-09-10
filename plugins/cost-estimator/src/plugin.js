@@ -146,19 +146,18 @@ function host() {
  * @returns {object} a Cordis Plugin.
  */
 function client() {
+  // Matches the shipped stats pills in the same row (`conversation.composer.dock`)
+  // so the cost reads as one more stat rather than a separate widget. Colours are
+  // the same tertiary label token the t/s and usage pills use.
   const CSS = [
-    '.dshCost{display:inline-flex;align-items:center;gap:6px;',
-    'font:var(--dsw-font-xs-13,12px);line-height:16px;white-space:nowrap;',
-    'border-radius:999px;padding:2px 8px;border:0.5px solid transparent;',
-    'user-select:none;}',
-    '.dshCostAmount{font-weight:500;font-variant-numeric:tabular-nums;}',
-    '.dshCostMeta{color:var(--dsw-alias-label-secondary);',
-    'font-variant-numeric:tabular-nums;}',
-    '.dshCostPeak{color:#e02b2b;border-color:#e02b2b;',
-    'background:rgba(224,43,43,0.12);}',
-    '.dshCostOff{color:#1f9d55;border-color:#1f9d55;',
-    'background:rgba(31,157,85,0.12);}',
-    '.dshCostPanel{gap:2px;display:flex;flex-direction:column;}',
+    '.dshCost{box-sizing:border-box;max-width:100%;',
+    'color:var(--dsw-alias-label-tertiary);font:inherit;',
+    'font-variant-numeric:tabular-nums;line-height:inherit;white-space:nowrap;',
+    'background:0 0;border:none;border-radius:24px;',
+    'align-items:center;gap:6px;padding:1px 8px;display:inline-flex;}',
+    '.dshCostLabel{text-overflow:ellipsis;min-width:0;overflow:hidden;}',
+    '.dshCostSep{opacity:0.6;}',
+    '.dshCostPeak{color:#e02b2b;}',
   ].join('');
 
   /**
@@ -365,10 +364,6 @@ function client() {
         const costOutput = bucketCost(output, rates.output) * mult;
         const totalCost = costUncached + costCacheRead + costCacheWrite + costOutput;
 
-        // Cache hit share of prompt-side tokens, the number that drives savings.
-        const billedInput = uncached + cacheRead + cacheWrite;
-        const hitPercent = billedInput > 0 ? Math.round((cacheRead / billedInput) * 100) : 0;
-
         const isPeak = peakValue !== null && peakValue.peak === true;
         const peakNote = isPeak ? 'peak rates (2x)' : 'off-peak rates (50% off)';
         const exactNote = resolved.exact
@@ -379,34 +374,30 @@ function client() {
           'Estimated session cost at published DeepSeek list rates.',
           '',
           'Model: ' + resolved.row.label + ' (' + peakNote + ')',
-          'Cache read:   ' + formatTokens(cacheRead).padStart(8) + '  ' + formatUsd(costCacheRead),
-          'Cache write:  ' + formatTokens(cacheWrite).padStart(8) + '  ' + formatUsd(costCacheWrite),
-          'Uncached in:  ' + formatTokens(uncached).padStart(8) + '  ' + formatUsd(costUncached),
-          'Output:       ' + formatTokens(output).padStart(8) + '  ' + formatUsd(costOutput),
+          'Cache read:   ' + formatTokens(cacheRead),
+          'Cache write:  ' + formatTokens(cacheWrite),
+          'Uncached in:  ' + formatTokens(uncached),
+          'Output:       ' + formatTokens(output),
           '',
           'Total: ' + formatUsd(totalCost),
-          'Cache hit rate: ' + hitPercent + '% of prompt tokens',
           '',
           'An estimate, not a bill. Credits, discounts, and retries',
           'billed on another route are not visible here.' + exactNote,
         ].join('\n');
 
-        const value = peakValue === null
-          ? formatUsd(totalCost)
-          : formatUsd(totalCost);
-
+        // The cache-hit rate is deliberately NOT repeated here: the usage pill
+        // in this same row already reports it, so a second one would only give
+        // two differently-worded numbers for the same measurement.
+        //
+        // Structure mirrors the shipped pills: label, a "·" separator, a value.
         return React.createElement('span', {
-          className: 'dshCost ' + (isPeak ? 'dshCostPeak' : 'dshCostOff'),
+          className: 'dshCost' + (isPeak ? ' dshCostPeak' : ''),
           title: details,
           role: 'status',
         }, [
-          React.createElement('span', { key: 'v', className: 'dshCostAmount' }, value),
-          React.createElement('span', { key: 's', className: 'dshCostMeta' }, '\u00b7'),
-          React.createElement('span', { key: 't', className: 'dshCostMeta' },
-            formatTokens(totalTokens) + ' tok'),
-          billedInput > 0 ? React.createElement('span', { key: 's2', className: 'dshCostMeta' }, '\u00b7') : null,
-          billedInput > 0 ? React.createElement('span', { key: 'c', className: 'dshCostMeta' },
-            hitPercent + '% cached') : null,
+          React.createElement('span', { key: 'l', className: 'dshCostLabel' }, 'cost'),
+          React.createElement('span', { key: 's', className: 'dshCostSep', 'aria-hidden': true }, '\u00b7'),
+          React.createElement('span', { key: 'v' }, formatUsd(totalCost)),
         ]);
       }
 
