@@ -13,10 +13,30 @@
 import assert from 'node:assert/strict';
 import { host } from '../plugins/peak-pricing-warning/src/plugin.js';
 
-let handler = null;
-globalThis.harness = { handle: (name, fn) => { handler = fn; } };
-host().apply({});
-assert.ok(typeof handler === 'function', 'host must register a peak-status handler');
+// Stand in for the Cordis context: capture the registered route and drive its
+// handler directly, so the test needs no HTTP server.
+let route = null;
+const ctx = {
+  effect: (fn) => { fn(); },
+  webServer: {
+    register: (r) => { route = r; return () => {}; },
+  },
+};
+host().apply(ctx);
+assert.ok(route !== null, 'host must register a status route');
+assert.equal(route.kind, 'exact', 'route should match one exact path');
+assert.equal(route.path, '/dsh-peak-pricing-warning/api/peak-status');
+
+/** Invoke the route handler and parse the JSON body it writes. */
+function handler() {
+  let body = '';
+  const res = {
+    writeHead: () => {},
+    end: (chunk) => { body = chunk; },
+  };
+  route.handler({}, res);
+  return JSON.parse(body);
+}
 
 const at = (ms) => { Date.now = () => ms; };
 const realNow = Date.now;

@@ -2,6 +2,7 @@
 .idea/
 *.log
 node_modules/
+.ref/
 .sub/
 .sub2/
 .vscode/

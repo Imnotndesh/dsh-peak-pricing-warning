@@ -118,20 +118,39 @@ function host() {
     };
   }
 
+  /**
+   * Compute the status payload. Only scalars: this crosses a wire.
+   * @returns {object} pricing status for the client.
+   */
+  function status() {
+    const now = Date.now();
+    const bounds = windowBounds(now);
+    return {
+      nowMs: now,
+      peak: inPeakWindow(now),
+      weekend: treatAsWeekend(new Date(now).getUTCDay()),
+      offPeakStartMs: bounds.offPeakStartMs,
+      peakStartMs: bounds.peakStartMs,
+    };
+  }
+
+  // The host half serves its client over an HTTP route on the profile's web
+  // server. `harness.handle` is a DYNAMIC-plugin builtin and does not exist in
+  // an installed package, so this is the portable form.
   return {
-    apply() {
-      harness.handle('peak-status', () => {
-        const now = Date.now();
-        const bounds = windowBounds(now);
-        // Only scalars cross the JSON-RPC boundary.
-        return {
-          nowMs: now,
-          peak: inPeakWindow(now),
-          weekend: treatAsWeekend(new Date(now).getUTCDay()),
-          offPeakStartMs: bounds.offPeakStartMs,
-          peakStartMs: bounds.peakStartMs,
-        };
-      });
+    inject: ['webServer'],
+    apply(ctx) {
+      ctx.effect(() => ctx.webServer.register({
+        kind: 'exact',
+        path: '/dsh-peak-pricing-warning/api/peak-status',
+        handler: (req, res) => {
+          res.writeHead(200, {
+            'content-type': 'application/json',
+            'cache-control': 'no-store',
+          });
+          res.end(JSON.stringify(status()));
+        },
+      }), 'peak-pricing: status route');
     },
   };
 }
