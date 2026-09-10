@@ -146,10 +146,22 @@ function host() {
  * @returns {object} a Cordis Plugin.
  */
 function client() {
-  // Matches the shipped stats pills in the same row (`conversation.composer.dock`)
-  // so the cost reads as one more stat rather than a separate widget. Colours are
-  // the same tertiary label token the t/s and usage pills use.
+  // The dock slot is a plain BLOCK container (no `display:flex`), and the
+  // shipped `stats` occupant fills its whole line (`width:100%` plus
+  // `justify-content:center`). A sibling entry therefore cannot sit beside
+  // those pills on its own: it wraps to the next line however narrow it is.
+  //
+  // So this pill reproduces that row's geometry — full width, centered, same
+  // 13px secondary type and 12px gap — then lifts itself by one line box so it
+  // lands ON the same visual row as the t/s and usage pills.
   const CSS = [
+    '.dshCostRow{box-sizing:border-box;width:100%;',
+    'max-width:var(--dsh-chat-content-width);',
+    'padding:0 calc(var(--dsh-composer-side-clearance) + 16px);',
+    'font-size:var(--dsh-content-font-size-secondary,13px);',
+    'line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px));',
+    'display:flex;justify-content:center;gap:12px;',
+    'margin:calc(-20px - var(--dsh-content-font-delta-secondary,0px)) auto 0;}',
     '.dshCost{box-sizing:border-box;max-width:100%;',
     'color:var(--dsw-alias-label-tertiary);font:inherit;',
     'font-variant-numeric:tabular-nums;line-height:inherit;white-space:nowrap;',
@@ -390,15 +402,19 @@ function client() {
         // two differently-worded numbers for the same measurement.
         //
         // Structure mirrors the shipped pills: label, a "·" separator, a value.
-        return React.createElement('span', {
-          className: 'dshCost' + (isPeak ? ' dshCostPeak' : ''),
-          title: details,
-          role: 'status',
-        }, [
-          React.createElement('span', { key: 'l', className: 'dshCostLabel' }, 'cost'),
-          React.createElement('span', { key: 's', className: 'dshCostSep', 'aria-hidden': true }, '\u00b7'),
-          React.createElement('span', { key: 'v' }, formatUsd(totalCost)),
-        ]);
+        // The row wrapper reproduces the stats row's width/centering/gap and
+        // lifts one line box, so this lands inline with its pills rather than
+        // on a second line of its own.
+        return React.createElement('div', { className: 'dshCostRow' },
+          React.createElement('span', {
+            className: 'dshCost' + (isPeak ? ' dshCostPeak' : ''),
+            title: details,
+            role: 'status',
+          }, [
+            React.createElement('span', { key: 'l', className: 'dshCostLabel' }, 'cost'),
+            React.createElement('span', { key: 's', className: 'dshCostSep', 'aria-hidden': true }, '\u00b7'),
+            React.createElement('span', { key: 'v' }, formatUsd(totalCost)),
+          ]));
       }
 
       const slots = ctx.get('slots');
