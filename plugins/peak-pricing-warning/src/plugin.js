@@ -138,6 +138,53 @@ function host() {
 
 // #endregion host
 
+// #region rates
+
+/**
+ * Published DeepSeek list rates in USD per 1M tokens.
+ *
+ * `cacheWrite` is derived, not quoted: DeepSeek documents a cache HIT discount
+ * but publishes no separate write premium, so a cache write is billed as an
+ * ordinary uncached input token. Change this one field if that stops being true.
+ *
+ * Peak and off-peak differ by exactly 2x, so off-peak is derived rather than
+ * duplicated — one number to update per model when prices change.
+ */
+const RATE_TABLE = {
+  'deepseek-flash': {
+    label: 'DeepSeek Flash',
+    peak: { cacheRead: 0.006, uncachedInput: 0.3, cacheWrite: 0.3, output: 1.2 },
+  },
+  'deepseek-v4-pro': {
+    label: 'DeepSeek V4 Pro',
+    peak: { cacheRead: 0.044, uncachedInput: 1.32, cacheWrite: 1.32, output: 3.96 },
+  },
+};
+
+/** DeepSeek off-peak is exactly half of peak. */
+const OFF_PEAK_MULTIPLIER = 0.5;
+
+/**
+ * Resolve a model id to a rate row.
+ * Matches on the model string, so a provider prefix or a dated suffix still
+ * resolves. Falls back to Flash, the cheaper route, and reports that it did.
+ *
+ * @param {string} modelId - model id from the model directory.
+ * @returns {{row: object, key: string, exact: boolean}} resolved rate row.
+ */
+function resolveRates(modelId) {
+  const id = typeof modelId === 'string' ? modelId.toLowerCase() : '';
+  if (id.indexOf('pro') !== -1 && id.indexOf('deepseek') !== -1) {
+    return { row: RATE_TABLE['deepseek-v4-pro'], key: 'deepseek-v4-pro', exact: true };
+  }
+  if (id.indexOf('deepseek') !== -1) {
+    return { row: RATE_TABLE['deepseek-flash'], key: 'deepseek-flash', exact: true };
+  }
+  return { row: RATE_TABLE['deepseek-flash'], key: 'deepseek-flash', exact: false };
+}
+
+// #endregion rates
+
 // #region client
 
 /**
@@ -159,17 +206,22 @@ function host() {
  * @returns {object} a Cordis Plugin.
  */
 function client() {
+  // Plain inline text, not a pill: it sits in the composer tool row next to the
+  // model selector, so it borrows that row's own typography and spacing instead
+  // of drawing its own container. Only the status dot carries colour.
   const CSS = [
     '.dshPeak{display:inline-flex;align-items:center;gap:6px;',
     'font:var(--dsw-font-xs-13,12px);line-height:16px;white-space:nowrap;',
-    'border-radius:999px;padding:2px 8px;border:0.5px solid transparent;',
     'user-select:none;}',
     '.dshPeakDot{width:6px;height:6px;border-radius:999px;flex:none;',
     'background:currentColor;}',
-    '.dshPeakCount{color:var(--dsw-alias-label-secondary);',
+    '.dshPeakLabel{font-weight:500;}',
+    '.dshPeakMeta{color:var(--dsw-alias-label-secondary);',
     'font-variant-numeric:tabular-nums;}',
-    '.dshPeakOffline{border-color:var(--dsw-alias-border-l2);',
-    'color:var(--dsw-alias-label-secondary);}',
+    '.dshPeakCost{color:var(--dsw-alias-label-secondary);',
+    'font-variant-numeric:tabular-nums;}',
+    '.dshPeakSep{color:var(--dsw-alias-label-caption);opacity:0.7;}',
+    '.dshPeakOffline{color:var(--dsw-alias-label-secondary);}',
   ].join('');
 
   /**
@@ -206,6 +258,41 @@ function client() {
     if (d > 0) return d + 'd ' + h + 'h';
     if (h > 0) return h + 'h ' + pad(m) + 'm';
     return m + 'm ' + pad(s) + 's';
+  }
+
+  /**
+   * Compact token count: 950, 12.4k, 1.28M.
+   * @param {number} n - token count.
+   * @returns {string} compact representation.
+   */
+  function formatTokens(n) {
+    if (typeof n !== 'number' || !isFinite(n)) return '0';
+    if (n < 1000) return String(Math.round(n));
+    if (n < 1e6) return (n / 1e3).toFixed(n < 1e4 ? 1 : 0) + 'k';
+    return (n / 1e6).toFixed(2) + 'M';
+  }
+
+  /**
+   * USD amount, with enough precision to stay useful when it is tiny.
+   * @param {number} usd - dollar amount.
+   * @returns {string} formatted amount.
+   */
+  function formatUsd(usd) {
+    if (typeof usd !== 'number' || !isFinite(usd) || usd <= 0) return '$0.00';
+    if (usd < 0.01) return '$' + usd.toFixed(4);
+    if (usd < 1) return '$' + usd.toFixed(3);
+    return '$' + usd.toFixed(2);
+  }
+
+  /**
+   * Cost of one bucket at a rate, in USD.
+   * @param {number} tokens - token count.
+   * @param {number} ratePerMillion - USD per 1M tokens.
+   * @returns {number} cost in USD.
+   */
+  function bucketCost(tokens, ratePerMillion) {
+    if (typeof tokens !== 'number' || !isFinite(tokens) || tokens <= 0) return 0;
+    return (tokens / 1e6) * ratePerMillion;
   }
 
   /**
@@ -403,6 +490,16 @@ function client() {
         const modelKey = React.useSyncExternalStore(subscribeModel, getModelKey);
         const statusValue = React.useSyncExternalStore(subscribe, getSnapshot);
 
+        // Hooks MUST run unconditionally, before any early return. Calling
+        // useProjection after the guards below changes the hook count between
+        // renders and trips React error #310 ("rendered more hooks than during
+        // the previous render"), because the early returns skip it on some
+        // renders and not others.
+        const useProjection = props.useProjection;
+        const usage = typeof useProjection === 'function'
+          ? useProjection('tokenUsage')
+          : undefined;
+
         if (!isDeepSeekKey(modelKey)) return null;
         if (statusValue === null) {
           const offline = lastError;
@@ -431,17 +528,63 @@ function client() {
             ? 'DeepSeek peak pricing (01:00-04:00, 06:00-10:00 UTC, Mon-Fri)'
             : 'DeepSeek off-peak pricing (peak resumes 01:00-04:00, 06:00-10:00 UTC, Mon-Fri)');
 
+        // ── Session cost ────────────────────────────────────────────────────
+        // `usage` was read at the top of this component (a hook must not run
+        // after an early return). Here we only price it: the four disjoint
+        // buckets DeepSeek bills separately, which the shipped usage donut
+        // renders from the same projection. Absent usage omits the figure.
+        let costText = null;
+        let costTitle = '';
+        if (usage !== undefined && usage !== null) {
+          const uncached = typeof usage.uncachedInputTokens === 'number' ? usage.uncachedInputTokens : 0;
+          const cacheRead = typeof usage.cacheReadTokens === 'number' ? usage.cacheReadTokens : 0;
+          const cacheWrite = typeof usage.cacheWriteTokens === 'number' ? usage.cacheWriteTokens : 0;
+          const output = typeof usage.outputTokens === 'number' ? usage.outputTokens : 0;
+          if (uncached + cacheRead + cacheWrite + output > 0) {
+            const model = modelKey.split('|')[1] || modelKey;
+            const resolved = resolveRates(model);
+            const rates = resolved.row.peak;
+            const mult = st.peak ? 1 : OFF_PEAK_MULTIPLIER;
+            const usd = (
+              bucketCost(uncached, rates.uncachedInput)
+              + bucketCost(cacheRead, rates.cacheRead)
+              + bucketCost(cacheWrite, rates.cacheWrite)
+              + bucketCost(output, rates.output)
+            ) * mult;
+            costText = formatUsd(usd);
+            costTitle = [
+              'Estimated session cost at published DeepSeek list rates.',
+              'Model: ' + resolved.row.label + ' (' + (st.peak ? 'peak' : 'off-peak') + ' rates)',
+              'Cache read ' + formatTokens(cacheRead)
+                + ' · write ' + formatTokens(cacheWrite)
+                + ' · uncached ' + formatTokens(uncached)
+                + ' · output ' + formatTokens(output),
+              'An estimate, not a bill. Credits, discounts, and retries are not visible here.',
+            ].join('\n');
+          }
+        }
+
+        // Plain inline text: a coloured dot plus the status, then the countdown
+        // and cost as secondary text. No pill, no border, no background.
+        const children = [
+          React.createElement('span', { key: 'dot', className: 'dshPeakDot' }),
+          React.createElement('span', { key: 'label', className: 'dshPeakLabel' }, pal.label),
+          React.createElement('span', { key: 'sep', className: 'dshPeakSep', 'aria-hidden': true }, '·'),
+          React.createElement('span', { key: 'p', className: 'dshPeakMeta' }, primary),
+        ];
+        if (costText !== null) {
+          children.push(React.createElement('span', {
+            key: 'cs', className: 'dshPeakSep', 'aria-hidden': true,
+          }, '·'));
+          children.push(React.createElement('span', { key: 'c', className: 'dshPeakCost' }, costText));
+        }
+
         return React.createElement('span', {
           className: 'dshPeak',
-          style: { color: pal.color, background: pal.soft, borderColor: pal.color },
-          title: title,
+          style: { color: pal.color },
+          title: costTitle === '' ? title : title + '\n\n' + costTitle,
           role: 'status',
-        }, [
-          React.createElement('span', { key: 'dot', className: 'dshPeakDot' }),
-          React.createElement('span', { key: 'label' }, pal.label),
-          React.createElement('span', { key: 'sep', className: 'dshPeakCount' }, '\u00b7'),
-          React.createElement('span', { key: 'p', className: 'dshPeakCount' }, primary),
-        ]);
+        }, children);
       }
 
       const slots = ctx.get('slots');
