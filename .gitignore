@@ -1,6 +1,7 @@
-node_modules/
-*.log
 .DS_Store
-.vscode/
 .idea/
+*.log
+node_modules/
 .sub/
+.sub2/
+.vscode/
