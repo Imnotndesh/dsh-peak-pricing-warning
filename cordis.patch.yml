@@ -1,0 +1,11 @@
+# Cordis composition patch for @imnotndesh/dsh-peak-pricing-warning.
+#
+# `dsh plugin add @imnotndesh/dsh-peak-pricing-warning` applies this patch to the
+# host composition, inserting one row that mounts the plugin's client half.
+#
+# The id is local to this patch; the name resolves the npm package. The plugin
+# registers a badge into `conversation.input.left` and answers one Host RPC
+# method, so it needs no configuration and contributes no service.
+- insert:
+    - id: peak-pricing-warning
+      name: '@imnotndesh/dsh-peak-pricing-warning'
