@@ -63,11 +63,23 @@ An estimate, not a bill. It prices four buckets at list rates for the currently 
 
 ## Install
 
+> **Not yet published to npm.** `npm view @imnotndesh/dsh-peak-pricing-warning` returns 404, so any `add` command naming the bare package will fail at the registry. Install from the git URL or a local checkout below.
+
+Note the CLI package is **`@deepseek-ai/dsh`**, not `dsh` — `npx dsh …` fails with *"could not determine executable to run"* because no package by that name exists. The binary it installs is called `dsh`, so a global install gives you a bare `dsh` command.
+
+### From GitHub
+
 ```bash
-dsh plugin add @imnotndesh/dsh-peak-pricing-warning
+npx @deepseek-ai/dsh plugin add github:Imnotndesh/dsh-peak-pricing-warning
 ```
 
-Restart the Host, then reload the web GUI.
+Or, with `dsh` already installed globally:
+
+```bash
+dsh plugin add github:Imnotndesh/dsh-peak-pricing-warning
+```
+
+Then restart the Host and reload the web GUI.
 
 ### From a local checkout
 
@@ -75,6 +87,8 @@ Restart the Host, then reload the web GUI.
 git clone https://github.com/Imnotndesh/dsh-peak-pricing-warning.git
 dsh plugin add ./dsh-peak-pricing-warning
 ```
+
+`dsh plugin` forwards to a package manager inside the profile directory, so whichever manager you use must be on `PATH`: the CLI hardcodes `pnpm` and reports *"pnpm not found on PATH"* otherwise. Bun also works if you add the profile dependency by hand — `bun add file:/path/to/checkout` in `$DSH_HOME/profiles/web` — then add the package name to `dsh.profile.bundles` in that profile's `package.json`. That is exactly what the CLI's own `reconcilePlugins` pass does after a successful install.
 
 ### Without installing
 

@@ -15,10 +15,7 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "platform": "web",
-      "external": [
-        "react"
-      ]
+      "platform": "web"
     }
   },
   "peerDependencies": {
