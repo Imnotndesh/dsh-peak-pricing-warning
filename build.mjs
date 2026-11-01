@@ -55,14 +55,53 @@ function extractFunction(text, name) {
 const hostFn = extractFunction(src, 'host');
 const clientFn = extractFunction(src, 'client');
 
+/**
+ * Module-scope code a generated half needs: every `#region` other than `host`
+ * and `client`, minus the file header and the trailing `export` statement.
+ * Today that is the `rates` region — the table `client()` prices from.
+ *
+ * Emitting only the two factories therefore dropped `RATE_TABLE`,
+ * `OFF_PEAK_MULTIPLIER` and `resolveRates` from the browser bundle even though
+ * `client()` calls them: the first render that priced a session threw
+ * `ReferenceError: resolveRates is not defined`, the slot's error boundary
+ * blacked out that cell, and the badge was gone from the composer.
+ *
+ * Selecting by region rather than by name means a later shared declaration is
+ * carried into the bundle without another edit here.
+ */
+const moduleScope = src
+  .replace(/\/\/ #region host[\s\S]*?\/\/ #endregion host/, '')
+  .replace(/\/\/ #region client[\s\S]*?\/\/ #endregion client/, '')
+  .replace(/^\/\*\*[\s\S]*?\*\/\r?\n/, '')
+  .split('\n')
+  .filter((line) => !/^\s*export\s/.test(line))
+  .join('\n')
+  .trim();
+
 // ── Host half: plain ESM ────────────────────────────────────────────────────
+// The authored body is a FACTORY: `host()` yields { inject, apply }. A bundle
+// must instead export the plugin's OWN fields, because the Host Loader runs
+// `unwrapExports` (= `exports.default ?? exports`) and then looks for `apply`
+// and `inject` on that value.
+//
+// Exporting the factory as `default` makes the Loader take `host` as the
+// plugin callback. A `function` declaration has a prototype, so Cordis takes
+// its constructor branch (`new host(ctx, config)`), keeps only the returned
+// object's init hooks, and discards the plugin object — `apply` never runs, the
+// route is never registered, and nothing is logged. Calling the factory here
+// and re-exporting its fields is the fix, exactly as the client half does.
+//
+// Deliberately NO `export default`: a default export collapses the module in
+// `unwrapExports` and takes `inject` down with it. The host half needs no
+// module-scope code, so none is emitted into it.
 writeFileSync('lib/index.js', [
   '// GENERATED from ' + SOURCE + ' — do not edit. Run `node build.mjs`.',
   '// Host half: plain ESM, imported by the Host Loader.',
   hostFn,
   '',
-  'export { host };',
-  'export default host;',
+  'const plugin = host();',
+  'export const inject = plugin.inject;',
+  'export const apply = plugin.apply;',
   '',
 ].join('\n'));
 
@@ -115,6 +154,8 @@ const bundle = [
   '        });',
   '      },',
   '    };',
+  '',
+  moduleScope,
   '',
   clientFn,
   '',
