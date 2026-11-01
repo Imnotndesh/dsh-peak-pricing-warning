@@ -113,11 +113,13 @@ All are easy to reintroduce, so each is called out in the source.
 ## Verifying it
 
 ```bash
-node test/peak.test.mjs   # 8 schedule boundaries
-node test/cost.test.mjs   # 12 published rates + invariants
+node test/peak.test.mjs     # 8 schedule boundaries
+node test/cost.test.mjs     # 12 published rates + invariants
+node test/bundle.test.mjs   # module-loader handshake + export shape
+node test/render.test.mjs   # renders with usage and prices the session
 ```
 
-No Harness runtime needed. `peak.test.mjs` covers every boundary shape and asserts the countdown target is always in the future. `cost.test.mjs` asserts the rate table reproduces every published DeepSeek figure exactly, that peak is exactly 2x off-peak, and that cache reads stay >10x cheaper than uncached input — the premise the cost figure depends on.
+No Harness runtime needed. `peak.test.mjs` covers every boundary shape and asserts the countdown target is always in the future. `cost.test.mjs` asserts the rate table reproduces every published DeepSeek figure exactly, that peak is exactly 2x off-peak, and that cache reads stay >10x cheaper than uncached input — the premise the cost figure depends on. `bundle.test.mjs` drives the built client bundle through a stub of the browser module loader, asserting the handshake, the export shape, and that `apply` registers its slot. `render.test.mjs` renders that bundle against a usage projection and asserts the priced figure, so a helper missing from the generated half fails here instead of disappearing inside the composer.
 
 ## Layout
 
@@ -125,7 +127,7 @@ No Harness runtime needed. `peak.test.mjs` covers every boundary shape and asser
 plugins/peak-pricing-warning/src/plugin.js   single source of truth (both halves)
 lib/                                          generated halves the dsh.bundle path loads
 cordis.patch.yml                             composition row `dsh plugin add` applies
-test/                                        boundary + rate tests
+test/                                        boundary, rate, bundle, and render tests
 ```
 
 `lib/` is generated from the plugin source by `node build.mjs`, so the dynamic-plugin copy and the installed package cannot drift.
